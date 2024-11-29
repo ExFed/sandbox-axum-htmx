@@ -1,11 +1,16 @@
-use axum::{extract::Query, response::Html, routing, serve, Router};
-use rand::Rng;
-use serde::Deserialize;
+use askama::Template;
+use axum::{extract::Query, routing, serve, Router};
 use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let app = Router::new().route("/", routing::get(handle));
+    let app = Router::new()
+        .route("/", routing::get(index))
+        .nest_service(
+            "/favicon.ico",
+            tower_http::services::ServeFile::new("assets/favicon/favicon.ico"),
+        )
+        .nest_service("/assets", tower_http::services::ServeDir::new("assets"));
     let listener = TcpListener::bind("127.0.0.1:3000").await?;
 
     serve(listener, app.into_make_service()).await?;
@@ -13,13 +18,18 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Deserialize)]
-struct RangeParameters {
-    start: usize,
-    end: usize,
+#[derive(serde::Deserialize)]
+struct HelloParam {
+    who: Option<String>,
 }
 
-async fn handle(Query(range): Query<RangeParameters>) -> Html<String> {
-    let num = rand::thread_rng().gen_range(range.start..range.end);
-    Html(format!("{}", num))
+#[derive(Template, Debug)]
+#[template(path = "index.html")]
+struct HelloTemplate {
+    pub who: String,
+}
+
+async fn index(Query(hello): Query<HelloParam>) -> HelloTemplate {
+    let who = hello.who.unwrap_or("mom".into());
+    HelloTemplate { who }
 }
